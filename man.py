@@ -51,7 +51,7 @@
 # if __name__ == "__main__":
 #
 #    app.run(debug=True,port=5001)
-#
+
 
 from flask import Flask, render_template, request
 import pandas as pd
@@ -59,62 +59,51 @@ import pickle
 import numpy as np
 import os
 
-# Ensure file paths are correctly handled
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "RidgeModel.pkl")
-DATA_PATH = os.path.join(BASE_DIR, "Cleaned_data.csv")
+app = Flask(__name__)
 
-# Load model safely
+# Load the model with error handling
 try:
-    with open(MODEL_PATH, "rb") as f:
+    with open("RidgeModel.pkl", "rb") as f:
         model = pickle.load(f)
     print("Model loaded successfully!")
 except Exception as e:
     print(f"Error loading model: {e}")
-    model = None
+    model = None  # Handle the case where the model doesn't load
 
-# Load data safely
-try:
-    data = pd.read_csv(DATA_PATH, encoding='utf-8')
-except Exception as e:
-    print(f"Error loading data: {e}")
-    data = None
-
-app = Flask(__name__)
+# Load data
+data = pd.read_csv('Cleaned_data.csv', encoding='utf-8')
 
 @app.route('/')
 def index():
-    if data is not None:
-        locations = sorted(data['location'].unique())
-    else:
-        locations = []
+    locations = sorted(data['location'].unique())
     return render_template('index.html', locations=locations)
 
 @app.route('/predict', methods=['POST'])
 def predict():
+    if not model:
+        return "Error: Model not loaded correctly."
+
     location = request.form.get('location')
     bhk = request.form.get('bhk')
     bath = request.form.get('bath')
     sqft = request.form.get('total_sqft')
-    print(f"DEBUG: Location: {repr(location)}, BHK: {repr(bhk)}, Bath: {repr(bath)}, Sqft: {repr(sqft)}")
 
     if None in [location, bhk, bath, sqft]:
-        return "Error: Missing form data. Please ensure all fields are filled."
+        return "Error: Missing form data."
 
     try:
         bhk = int(bhk)
         bath = int(bath)
         sqft = float(sqft)
     except ValueError:
-        return "Error: Invalid input format. BHK and Bath should be integers, Sqft should be a number."
+        return "Error: Invalid input format."
 
-    input_df = pd.DataFrame([[location, sqft, bath, bhk]], columns=['location', 'total_sqft', 'bath', 'bhk'])
-    try:
-        prediction = model.predict(input_df)[0] * 1e5
-        return str(np.round(prediction, 2))
-    except Exception as e:
-        return f"Error during prediction: {e}"
+    put = pd.DataFrame([[location, sqft, bath, bhk]], columns=['location', 'total_sqft', 'bath', 'bhk'])
+    prediction = model.predict(put)[0] * 1e5
 
+    return str(np.round(prediction, 2))
+
+# Fix port binding for Render
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
-
+    port = int(os.environ.get("PORT", 5000))  # Default to 5000
+    app.run(host="0.0.0.0", port=port, debug=True)
